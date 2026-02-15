@@ -76,7 +76,33 @@ try:
     return username, password_hash
 
 
+  def _progress_path(filepath):
+    return filepath + '.scrobbled'
+
+  def _load_progress(progress_path):
+    done = set()
+    if os.path.isfile(progress_path):
+      try:
+        with open(progress_path) as f:
+          for ln in f:
+            parts = ln.rstrip('\n').split('\t')
+            if len(parts) == 3:
+              done.add((parts[0], parts[1], parts[2]))
+      except (IOError, OSError):
+        pass
+    return done
+
+  def _save_progress_batch(progress_path, batch):
+    try:
+      with open(progress_path, 'a') as f:
+        for t in batch:
+          f.write('{}\t{}\t{}\n'.format(t['artist'], t['title'], t['timestamp']))
+    except (IOError, OSError):
+      pass
+
   def submitlog (filepath, dry, tracks=0, skip=0, network=None, batch_size=50, batch_delay=0):
+    progress_path = _progress_path(filepath)
+    done_set = _load_progress(progress_path)
     with open(filepath) as tsv:
       iteration = 0
       skipped = 0
@@ -104,19 +130,33 @@ try:
         except:
           print ('ERROR: .scrobbler.log malformed. Exiting...')
           sys.exit(1)
+        track_key = (artist, title, str(timestamp_unix))
+        if track_key in done_set:
+          if dry == False:
+            print ('[.] Already scrobbled ({}%): Artist: {}; Album: {}; Track: {}; Time: {}'.format(str(round(100*(iteration-4)/(tracks-4),2)),artist,album,title,unix_timestamp.strftime('%Y-%m-%d %H:%M:%S')))
+          continue
         if dry == False:
           print ('[V] Scrobbled ({}%): Artist: {}; Album: {}; Track: {}; Time: {}'.format(str(round(100*(iteration-4)/(tracks-4),2)),artist,album,title,unix_timestamp.strftime('%Y-%m-%d %H:%M:%S')))
           batch.append({'artist': artist, 'title': title, 'album': album, 'timestamp': timestamp_unix})
           if len(batch) >= batch_size:
             network.scrobble_many(batch)
+            _save_progress_batch(progress_path, batch)
+            for t in batch:
+              done_set.add((t['artist'], t['title'], str(t['timestamp'])))
             batch = []
             if batch_delay > 0:
               time.sleep(batch_delay)
       if dry == False:
         if batch:
           network.scrobble_many(batch)
+          _save_progress_batch(progress_path, batch)
           print ('[V] Scrobbled batch ({} tracks)'.format(len(batch)))
         print("\n{} tracks scrobbled".format(str(iteration-(4+skip))))
+        if os.path.isfile(progress_path):
+          try:
+            os.remove(progress_path)
+          except OSError:
+            pass
         os.remove(scrobblerlogpath)
       else:
         return iteration, skipped
