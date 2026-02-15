@@ -82,12 +82,12 @@ try:
       skipped = 0
       for line in csv.reader(tsv, dialect="excel-tab"):
         iteration = iteration + 1
-        if iteration < 4:
+        if iteration < 5:
           continue
         if line[5] == 'S':
           skipped = skipped + 1
           if dry == False:
-            print ('[X] Skipped ({}%): Artist: {}; Album: {}; Track: {}; Time: {}'.format(str(round(100*(iteration-3)/(tracks-3),2)),line[0],line[1],line[2],datetime.datetime.fromtimestamp(int(line[6])).strftime('%Y-%m-%d %H:%M:%S')))
+            print ('[X] Skipped ({}%): Artist: {}; Album: {}; Track: {}; Time: {}'.format(str(round(100*(iteration-4)/(tracks-4),2)),line[0],line[1],line[2],datetime.datetime.fromtimestamp(int(line[6])).strftime('%Y-%m-%d %H:%M:%S')))
           continue
         elif line[5] != 'L':
           print ('ERROR: .scrobbler.log malformed. Exiting...')
@@ -104,10 +104,10 @@ try:
           print ('ERROR: .scrobbler.log malformed. Exiting...')
           sys.exit(1)
         if dry == False:
-          print ('[V] Scrobled ({}%): Artist: {}; Album: {}; Track: {}; Time: {}'.format(str(round(100*(iteration-3)/(tracks-3),2)),artist,album,track,unix_timestamp.strftime('%Y-%m-%d %H:%M:%S')))
+          print ('[V] Scrobled ({}%): Artist: {}; Album: {}; Track: {}; Time: {}'.format(str(round(100*(iteration-4)/(tracks-4),2)),artist,album,track,unix_timestamp.strftime('%Y-%m-%d %H:%M:%S')))
           network.scrobble(artist=artist, album=album, title=track, timestamp=unix_timestamp.replace(tzinfo=local_tz).astimezone(tz=datetime.timezone.utc))
       if dry == False:
-        print("\n{} tracks scrobbled".format(str(iteration-(3+skip))))
+        print("\n{} tracks scrobbled".format(str(iteration-(4+skip))))
         os.remove(scrobblerlogpath)
       else:
         return iteration, skipped
