@@ -76,10 +76,11 @@ try:
     return username, password_hash
 
 
-  def submitlog (filepath,dry,tracks=0,skip=0,network=None):
+  def submitlog (filepath, dry, tracks=0, skip=0, network=None, batch_size=50, batch_delay=0):
     with open(filepath) as tsv:
       iteration = 0
       skipped = 0
+      batch = []
       for line in csv.reader(tsv, dialect="excel-tab"):
         iteration = iteration + 1
         if iteration < 5:
@@ -94,19 +95,27 @@ try:
           sys.exit(1)
         try:
           artist = line[0]
-          track = line[2]
+          title = line[2]
           album = line[1]
-          unix_timestamp = line[6]       
-          unix_timestamp = datetime.datetime.fromtimestamp(int(unix_timestamp))
+          timestamp_unix = int(line[6])
+          unix_timestamp = datetime.datetime.fromtimestamp(timestamp_unix)
           local_tz = datetime.datetime.now(datetime.timezone.utc).astimezone().tzinfo
           unix_timestamp = unix_timestamp.replace(tzinfo=local_tz).astimezone(tz=datetime.timezone.utc)
         except:
           print ('ERROR: .scrobbler.log malformed. Exiting...')
           sys.exit(1)
         if dry == False:
-          print ('[V] Scrobled ({}%): Artist: {}; Album: {}; Track: {}; Time: {}'.format(str(round(100*(iteration-4)/(tracks-4),2)),artist,album,track,unix_timestamp.strftime('%Y-%m-%d %H:%M:%S')))
-          network.scrobble(artist=artist, album=album, title=track, timestamp=unix_timestamp.replace(tzinfo=local_tz).astimezone(tz=datetime.timezone.utc))
+          print ('[V] Scrobbled ({}%): Artist: {}; Album: {}; Track: {}; Time: {}'.format(str(round(100*(iteration-4)/(tracks-4),2)),artist,album,title,unix_timestamp.strftime('%Y-%m-%d %H:%M:%S')))
+          batch.append({'artist': artist, 'title': title, 'album': album, 'timestamp': timestamp_unix})
+          if len(batch) >= batch_size:
+            network.scrobble_many(batch)
+            batch = []
+            if batch_delay > 0:
+              time.sleep(batch_delay)
       if dry == False:
+        if batch:
+          network.scrobble_many(batch)
+          print ('[V] Scrobbled batch ({} tracks)'.format(len(batch)))
         print("\n{} tracks scrobbled".format(str(iteration-(4+skip))))
         os.remove(scrobblerlogpath)
       else:
@@ -140,7 +149,7 @@ try:
 
   usage = '''
   credentials managment: pyapplier.py creds list | edit USERNAME | add USERNAME | del USERNAME
-  .scrobbler.log submit: pyapplier.py -f /PATH/TO/.scrobbler.log [-w] [-y [USERNAME]]
+  .scrobbler.log submit: pyapplier.py -f /PATH/TO/.scrobbler.log [-w] [-y [USERNAME]] [--batch-size N] [--delay SECS]
   '''
 
   parser = argparse.ArgumentParser(usage=usage,formatter_class=argparse.RawTextHelpFormatter)
@@ -148,6 +157,8 @@ try:
   parser.add_argument('-w', '--warmup', action='store_true',default=False,help=argparse.SUPPRESS)
   parser.add_argument('-f', '--file',default=None,help=argparse.SUPPRESS)
   parser.add_argument('-y', '--yes',nargs='?',default=False,const=True,help=argparse.SUPPRESS)
+  parser.add_argument('--batch-size', type=int, default=50, metavar='N', help='Scrobbles per API request (max 50, default 50)')
+  parser.add_argument('--delay', type=float, default=5, metavar='SECS', help='Seconds to wait between batch requests (rate limit, default 5)')
   args = parser.parse_args()
   args = vars(args)
 
@@ -252,10 +263,12 @@ try:
   
   print ('\n')
 
+  batch_size = min(50, max(1, args.get('batch_size', 50)))
+  batch_delay = max(0, args.get('delay', 5))
   try:
-    trackstoscrobb, trackstoskip = submitlog(scrobblerlogpath,True)
+    trackstoscrobb, trackstoskip = submitlog(scrobblerlogpath, True)
     if trackstoscrobb > 0:
-      submitlog(scrobblerlogpath,False,trackstoscrobb,trackstoskip,network)
+      submitlog(scrobblerlogpath, False, trackstoscrobb, trackstoskip, network, batch_size=batch_size, batch_delay=batch_delay)
   except Exception as e:
     print (e)
     sys.exit(1)
