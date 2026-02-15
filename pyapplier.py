@@ -157,8 +157,11 @@ try:
 
   scrobblerlogpath = args['file']
 
-  if args['creds'] and os.path.isfile(credsfile):
-    loadcreds (credsfile,True)
+  creds_file_exists = os.path.isfile(credsfile)
+  can_run_creds = args['creds'] and (creds_file_exists or (len(args['creds']) >= 3 and args['creds'][1] == 'add'))
+  if can_run_creds:
+    if creds_file_exists:
+      loadcreds (credsfile,True)
     if 1 in range (len(args['creds'])):
       if args['creds'][1] == 'list':
         listcreds(credsfile)
@@ -176,15 +179,22 @@ try:
           print ('No user with name {}'.format(args['creds'][2]))
           sys.exit(0)
       elif args['creds'][1] == 'add' and 2 in range (len(args['creds'])):
-        with open(credsfile) as file:
-          creds_dict = yaml.full_load(file)
-          username = args['creds'][2]
-          password = getpass.getpass("Last.fm password: ")
-          password_hash = pylast.md5(password)
+        username = args['creds'][2]
+        password = getpass.getpass("Last.fm password: ")
+        password_hash = pylast.md5(password)
+        if creds_file_exists:
+          with open(credsfile) as file:
+            creds_dict = yaml.full_load(file)
           creds_dict['users'].append({'username': username, 'hash': password_hash})
-          with open(credsfile, 'w') as file:
-            yamldump = yaml.dump(creds_dict, file)
-          sys.exit(0)
+        else:
+          try:
+            os.makedirs('{}/.config/pyapplier'.format(homedir), exist_ok=True)
+          except OSError:
+            pass
+          creds_dict = {'users': [{'username': username, 'hash': password_hash}]}
+        with open(credsfile, 'w') as file:
+          yaml.dump(creds_dict, file)
+        sys.exit(0)
       elif args['creds'][1] == 'del' and 2 in range (len(args['creds'])):
         with open(credsfile) as file:
           creds_dict = yaml.full_load(file)
@@ -207,7 +217,7 @@ try:
     else:
       print ('Wrong arguments usage. Check pyapplier.py --help for info')
       sys.exit(0)
-  elif args['creds'] and not os.path.isfile(credsfile):
+  elif args['creds']:
     print ('Credentials file not exist')
     sys.exit(0)
 
